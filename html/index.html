@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AZWX</title>
+  <style>
+    :root{
+      --bg0: rgba(16, 14, 36, .78);
+      --bg1: rgba(28, 22, 66, .72);
+      --stroke: rgba(255,255,255,.12);
+      --stroke2: rgba(255,255,255,.18);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.62);
+      --muted2: rgba(255,255,255,.42);
+
+      --good: #67e3a7;
+      --warn: #ffb020;
+      --bad:  #ff4d5a;
+      --vio:  #b37bff;
+
+      --r: 22px;
+      --r2: 16px;
+
+      --shadow: 0 18px 60px rgba(0,0,0,.40);
+      --blur: 18px;
+
+      --pad: 16px;
+      --maxW: 420px;
+      --maxH: 86vh;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent !important;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color: var(--text);
+      user-select: none;
+    }
+
+    .hidden{ display:none !important; }
+
+    .root {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+    }
+
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      pointer-events: auto;
+    }
+
+    .panel {
+      width: min(var(--maxW), calc(100vw - 24px));
+      max-height: var(--maxH);
+      pointer-events: auto;
+      border-radius: 32px;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(180deg, var(--bg0), var(--bg1));
+
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .topbar{
+      display: grid;
+      grid-template-columns: 40px 1fr 72px;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 14px 10px 14px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+
+    .iconBtn{
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+    }
+    .iconBtn:hover{ transform: translateY(-1px); background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.14); }
+    .iconBtn:active{ transform: translateY(0px) scale(.99); }
+
+    .titleWrap{ min-width: 0; text-align: center; }
+    .title{
+      font-weight: 750;
+      letter-spacing: .2px;
+      font-size: 14px;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .subtitle{
+      margin-top: 3px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .clockPill{
+      justify-self: end;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: rgba(255,255,255,.86);
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      border-radius: 999px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .content{
+      padding: var(--pad);
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.22) transparent;
+    }
+    .content::-webkit-scrollbar{ width: 8px; }
+    .content::-webkit-scrollbar-thumb{ background: rgba(255,255,255,.20); border-radius: 10px; }
+    .content::-webkit-scrollbar-track{ background: transparent; }
+
+    .nowCard{
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      padding: 14px 14px 12px 14px;
+      display: grid;
+      grid-template-columns: 1fr 96px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .cond{ font-size: 13px; color: rgba(255,255,255,.84); font-weight: 650; }
+    .summary{ margin-top: 4px; font-size: 12px; color: var(--muted); }
+
+    .tempRow{
+      margin-top: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .tempBig{
+      font-size: 56px;
+      line-height: 1;
+      font-weight: 800;
+      letter-spacing: -1px;
+      font-variant-numeric: tabular-nums;
+    }
+    .deg{ font-size: 28px; opacity: .9; transform: translateY(-6px); }
+    .hilow{
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .wxIconBig{
+      width: 86px;
+      height: 86px;
+      display: grid;
+      place-items: center;
+      filter: drop-shadow(0 12px 22px rgba(0,0,0,.22));
+    }
+    .wxIconBig svg{ width: 86px; height: 86px; }
+
+    .metrics{
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .metric{
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      padding: 10px 10px;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      gap: 6px;
+    }
+    .mIcon{
+      width: 18px;
+      height: 18px;
+      opacity: .92;
+    }
+    .mIcon svg{ width: 18px; height: 18px; }
+    .mVal{
+      font-weight: 800;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+    .mLab{
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: -2px;
+    }
+
+    .sectionHead{
+      margin-top: 14px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 2px;
+    }
+    .sectionHead h3{
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: .3px;
+      color: rgba(255,255,255,.86);
+      font-weight: 800;
+      text-transform: none;
+    }
+    .sectionHead .hint{
+      font-size: 11px;
+      color: var(--muted2);
+    }
+
+    .hourlyRow{
+      margin-top: 10px;
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 84px;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.22) transparent;
+    }
+    .hourlyRow::-webkit-scrollbar{ height: 8px; }
+    .hourlyRow::-webkit-scrollbar-thumb{ background: rgba(255,255,255,.20); border-radius: 10px; }
+    .hourlyRow::-webkit-scrollbar-track{ background: transparent; }
+
+    .hourCard{
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      padding: 10px 10px 9px 10px;
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+    }
+    .hour{
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .wxIconSm{ width: 28px; height: 28px; display:grid; place-items:center; }
+    .wxIconSm svg{ width: 28px; height: 28px; }
+    .hourTemp{
+      font-weight: 800;
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .days{
+      margin-top: 10px;
+      border-radius: 22px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.05);
+      overflow: hidden;
+    }
+    .dayRow{
+      display: grid;
+      grid-template-columns: 64px 34px 1fr 74px;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 12px;
+      border-top: 1px solid rgba(255,255,255,.06);
+    }
+    .dayRow:first-child{ border-top: none; }
+
+    .dayLabel{
+      font-size: 12px;
+      font-weight: 800;
+      color: rgba(255,255,255,.86);
+      letter-spacing: .2px;
+    }
+    .dayCond{
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hiLoR{
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+    .hi{ font-weight: 850; }
+    .lo{ color: var(--muted); font-weight: 750; }
+
+    .footerHint{
+      margin: 12px 0 0 0;
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted2);
+      padding-bottom: 4px;
+    }
+
+    .nwsStack{
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(520px, calc(100vw - 20px));
+      display: grid;
+      gap: 10px;
+      pointer-events: none;
+    }
+    .nwsCard{
+      pointer-events: none;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.14);
+      background: rgba(10,10,16,.60);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+    .nwsBar{
+      height: 5px;
+      background: var(--bad);
+      opacity: .95;
+    }
+    .nwsBody{
+      padding: 10px 12px 11px 12px;
+      display: grid;
+      gap: 4px;
+    }
+    .nwsEvent{
+      font-weight: 900;
+      letter-spacing: .2px;
+      font-size: 12px;
+      color: rgba(255,255,255,.92);
+    }
+    .nwsHeadline{
+      font-size: 12px;
+      color: rgba(255,255,255,.86);
+    }
+    .nwsSource{
+      font-size: 11px;
+      color: var(--muted2);
+    }
+  </style>
+</head>
+<body>
+  <div id="nwsStack" class="nwsStack"></div>
+
+  <div id="root" class="root hidden">
+    <div id="backdrop" class="backdrop"></div>
+
+    <div class="panel" id="panel">
+      <div class="topbar">
+        <button class="iconBtn" id="btnClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M15 18l-6-6 6-6" stroke="rgba(255,255,255,.92)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+
+        <div class="titleWrap">
+          <div class="title" id="loc">Los Santos</div>
+          <div class="subtitle" id="sub">Weekly forecast</div>
+        </div>
+
+        <div class="clockPill" id="clock">00:00</div>
+      </div>
+
+      <div class="content">
+        <div class="nowCard">
+          <div>
+            <div class="cond" id="cond">Clear</div>
+            <div class="summary" id="summary">Forecast at your current position</div>
+
+            <div class="tempRow">
+              <div class="tempBig" id="tempBig">--</div>
+              <div class="deg">°</div>
+            </div>
+
+            <div class="hilow" id="hilow">H:--  L:--</div>
+          </div>
+
+          <div class="wxIconBig" id="iconBig"></div>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="mIcon" id="mPrecipIcon"></div>
+            <div class="mVal" id="mPrecip">--%</div>
+            <div class="mLab" id="mPrecipLab">Rain</div>
+          </div>
+
+          <div class="metric">
+            <div class="mIcon" id="mWindIcon"></div>
+            <div class="mVal" id="mWind">-- mph</div>
+            <div class="mLab">Wind</div>
+          </div>
+
+          <div class="metric">
+            <div class="mIcon" id="mDirIcon"></div>
+            <div class="mVal" id="mDir">--°</div>
+            <div class="mLab">Direction</div>
+          </div>
+        </div>
+
+        <div class="sectionHead">
+          <h3>Today</h3>
+          <div class="hint">Scroll</div>
+        </div>
+        <div class="hourlyRow" id="hourly"></div>
+
+        <div class="sectionHead">
+          <h3>Next 7</h3>
+          <div class="hint">High / Low</div>
+        </div>
+        <div class="days" id="days"></div>
+
+        <div class="footerHint">ESC or click outside to close</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ROOT = document.getElementById("root");
+    const BACKDROP = document.getElementById("backdrop");
+    const BTN_CLOSE = document.getElementById("btnClose");
+
+    const elLoc = document.getElementById("loc");
+    const elSub = document.getElementById("sub");
+    const elClock = document.getElementById("clock");
+    const elCond = document.getElementById("cond");
+    const elSummary = document.getElementById("summary");
+    const elTempBig = document.getElementById("tempBig");
+    const elHiLow = document.getElementById("hilow");
+    const elIconBig = document.getElementById("iconBig");
+
+    const elMPrecipIcon = document.getElementById("mPrecipIcon");
+    const elMPrecip = document.getElementById("mPrecip");
+    const elMPrecipLab = document.getElementById("mPrecipLab");
+    const elMWindIcon = document.getElementById("mWindIcon");
+    const elMWind = document.getElementById("mWind");
+    const elMDirIcon = document.getElementById("mDirIcon");
+    const elMDir = document.getElementById("mDir");
+
+    const elHourly = document.getElementById("hourly");
+    const elDays = document.getElementById("days");
+
+    const nwsStack = document.getElementById("nwsStack");
+
+    const RES = (typeof GetParentResourceName === "function") ? GetParentResourceName() : "az_weatherfronts";
+
+    function post(name, data){
+      return fetch(`https://${RES}/${name}`, {
+        method: "POST",
+        headers: { "Content-Type":"application/json; charset=UTF-8" },
+        body: JSON.stringify(data || {})
+      }).catch(() => {});
+    }
+
+    function show(){
+      ROOT.classList.remove("hidden");
+    }
+    function hide(){
+      ROOT.classList.add("hidden");
+    }
+
+    function clamp01(v){
+      v = Number(v || 0);
+      if (v < 0) return 0;
+      if (v > 1) return 1;
+      return v;
+    }
+
+    function parseClockHour(clockStr){
+      if (!clockStr || typeof clockStr !== "string") return null;
+      const m = clockStr.match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return null;
+      const h = Number(m[1]);
+      if (!Number.isFinite(h)) return null;
+      return (h % 24 + 24) % 24;
+    }
+
+    function fmtHour(h){
+      h = (h % 24 + 24) % 24;
+      const ampm = h >= 12 ? "PM" : "AM";
+      let hh = h % 12;
+      if (hh === 0) hh = 12;
+      return `${hh} ${ampm}`;
+    }
+
+    function svgIcon(name){
+      const stroke = "rgba(255,255,255,.92)";
+      const fillSoft = "rgba(255,255,255,.86)";
+      const fillCloud = "rgba(255,255,255,.92)";
+      const sun = "#ffd26f";
+      const blue = "#79d6ff";
+      const snow = "#cfe9ff";
+      const gray = "rgba(255,255,255,.72)";
+
+      if (name === "clear-day") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="12" fill="${sun}"/>
+          <g stroke="${sun}" stroke-width="4" stroke-linecap="round">
+            <path d="M32 6v8"/><path d="M32 50v8"/>
+            <path d="M6 32h8"/><path d="M50 32h8"/>
+            <path d="M13 13l6 6"/><path d="M45 45l6 6"/>
+            <path d="M51 13l-6 6"/><path d="M19 45l-6 6"/>
+          </g>
+        </svg>`;
+
+      if (name === "clear-night") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M42 10c-10 4-15 16-11 26s16 15 26 11c-3 7-10 12-18 12C27 59 17 49 17 37c0-8 4-15 10-19 4-3 9-5 15-5z" fill="${gray}"/>
+          <circle cx="50" cy="18" r="2.6" fill="rgba(255,255,255,.85)"/>
+          <circle cx="54" cy="26" r="1.8" fill="rgba(255,255,255,.72)"/>
+        </svg>`;
+
+      if (name === "cloudy") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M22 44h26a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 22 44z" fill="${fillCloud}"/>
+          <path d="M18 46h30a8 8 0 0 1 0 16H18a8 8 0 0 1 0-16z" fill="rgba(255,255,255,.70)"/>
+        </svg>`;
+
+      if (name === "partly-day") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <circle cx="24" cy="24" r="10" fill="${sun}"/>
+          <g stroke="${sun}" stroke-width="3.5" stroke-linecap="round">
+            <path d="M24 6v6"/><path d="M24 36v6"/>
+            <path d="M6 24h6"/><path d="M36 24h6"/>
+            <path d="M11 11l4 4"/><path d="M33 33l4 4"/>
+          </g>
+          <path d="M26 50h22a9 9 0 0 0 0-18 13 13 0 0 0-25-2A9 9 0 0 0 26 50z" fill="${fillCloud}"/>
+        </svg>`;
+
+      if (name === "rain") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M22 34h26a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 22 34z" fill="${fillCloud}"/>
+          <g fill="${blue}">
+            <path d="M24 40c2 3 0 6-2 8-2-2-4-5-2-8 1-2 3-2 4 0z"/>
+            <path d="M34 40c2 3 0 6-2 8-2-2-4-5-2-8 1-2 3-2 4 0z"/>
+            <path d="M44 40c2 3 0 6-2 8-2-2-4-5-2-8 1-2 3-2 4 0z"/>
+          </g>
+        </svg>`;
+
+      if (name === "thunder") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M22 34h26a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 22 34z" fill="${fillCloud}"/>
+          <path d="M30 38h10l-6 10h6l-12 14 4-12h-6l4-12z" fill="#ffd26f"/>
+          <g fill="${blue}">
+            <path d="M46 40c2 3 0 6-2 8-2-2-4-5-2-8 1-2 3-2 4 0z"/>
+          </g>
+        </svg>`;
+
+      if (name === "snow") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M22 34h26a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 22 34z" fill="${fillCloud}"/>
+          <g fill="${snow}">
+            <circle cx="26" cy="44" r="2.2"/><circle cx="34" cy="46" r="2.2"/><circle cx="42" cy="44" r="2.2"/>
+            <circle cx="30" cy="52" r="2.2"/><circle cx="38" cy="52" r="2.2"/>
+          </g>
+        </svg>`;
+
+      if (name === "wind") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M10 26h30c6 0 8-7 2-10" stroke="rgba(255,255,255,.86)" stroke-width="4" stroke-linecap="round"/>
+          <path d="M10 36h38c7 0 10-8 2-12" stroke="rgba(255,255,255,.76)" stroke-width="4" stroke-linecap="round"/>
+          <path d="M10 46h26c6 0 7 6 2 8" stroke="rgba(255,255,255,.66)" stroke-width="4" stroke-linecap="round"/>
+        </svg>`;
+
+      if (name === "fog") return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M18 30h28a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 18 30z" fill="rgba(255,255,255,.78)"/>
+          <g stroke="rgba(255,255,255,.62)" stroke-width="4" stroke-linecap="round">
+            <path d="M10 40h44"/><path d="M14 48h36"/><path d="M12 56h40"/>
+          </g>
+        </svg>`;
+
+      return `
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M22 44h26a10 10 0 0 0 0-20 15 15 0 0 0-29-3A10 10 0 0 0 22 44z" fill="${fillSoft}"/>
+        </svg>`;
+    }
+
+    function metricIcon(kind){
+      if (kind === "precip") return `
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 3c4 6 6 9 6 12a6 6 0 0 1-12 0c0-3 2-6 6-12z" fill="rgba(121,214,255,.95)"/>
+        </svg>`;
+      if (kind === "wind") return `
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M3 8h10c2 0 3-2 1.2-3.2" stroke="rgba(255,255,255,.88)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M3 12h14c3 0 4-3 1.5-4.6" stroke="rgba(255,255,255,.76)" stroke-width="2" stroke-linecap="round"/>
+          <path d="M3 16h9c2.6 0 3 2.5 1 3.3" stroke="rgba(255,255,255,.66)" stroke-width="2" stroke-linecap="round"/>
+        </svg>`;
+      if (kind === "dir") return `
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 3l4 9-4-2-4 2 4-9z" fill="rgba(255,255,255,.88)"/>
+          <path d="M12 12v9" stroke="rgba(255,255,255,.70)" stroke-width="2" stroke-linecap="round"/>
+        </svg>`;
+      return "";
+    }
+
+    function pickIconFromPayload(now){
+      const cond = (now && now.icon) ? String(now.icon) : "cloudy";
+      return cond;
+    }
+
+    function openFromPayload(payload){
+      if (!payload) return;
+      show();
+
+      const loc = payload.location || "Los Santos";
+      const sub = payload.subtitle || "Weekly forecast";
+      const clock = payload.clock || "00:00";
+
+      elLoc.textContent = loc;
+      elSub.textContent = sub;
+      elClock.textContent = clock;
+
+      const now = payload.now || {};
+      elCond.textContent = now.condition || "Clear";
+      elSummary.textContent = now.summary || "Forecast at your current position";
+
+      const tempC = Number(now.tempC ?? now.temp ?? 0);
+      elTempBig.textContent = Number.isFinite(tempC) ? String(Math.round(tempC)) : "--";
+
+      const weekly = payload.weekly || {};
+      if (weekly.hi != null || weekly.lo != null) {
+        elHiLow.textContent = `H:${weekly.hi ?? "--"}  L:${weekly.lo ?? "--"}`;
+      } else {
+        elHiLow.textContent = "H:--  L:--";
+      }
+
+      const iconName = pickIconFromPayload(now);
+      elIconBig.innerHTML = svgIcon(iconName);
+
+      const rain = clamp01(now.rain);
+      const snow = clamp01(now.snow);
+      const windMph = Number(now.windMph ?? 0);
+      const windDir = Number(now.windDirDeg ?? 0);
+
+      if (snow >= 0.18 && snow >= rain) {
+        elMPrecipLab.textContent = "Snow";
+        elMPrecip.textContent = `${Math.round(snow * 100)}%`;
+      } else {
+        elMPrecipLab.textContent = "Rain";
+        elMPrecip.textContent = `${Math.round(rain * 100)}%`;
+      }
+
+      elMWind.textContent = `${Math.round(windMph)} mph`;
+      elMDir.textContent = `${Math.round(windDir)}°`;
+
+      elMPrecipIcon.innerHTML = metricIcon("precip");
+      elMWindIcon.innerHTML = metricIcon("wind");
+      elMDirIcon.innerHTML = metricIcon("dir");
+
+      renderHourly(payload);
+      renderDays(payload);
+    }
+
+    function renderHourly(payload){
+      const days = Array.isArray(payload.days) ? payload.days : [];
+      elHourly.innerHTML = "";
+
+      const baseH = parseClockHour(payload.clock) ?? 12;
+
+      const count = Math.min(10, Math.max(7, days.length || 7));
+      for (let i = 0; i < count; i++){
+        const src = days[i % Math.max(1, days.length)] || {};
+        const hour = baseH + i;
+
+        const temp = Number(src.tempC ?? src.temp ?? 0);
+        const icon = src.icon || "cloudy";
+
+        const card = document.createElement("div");
+        card.className = "hourCard";
+        card.innerHTML = `
+          <div class="hour">${i === 0 ? "Now" : fmtHour(hour)}</div>
+          <div class="wxIconSm">${svgIcon(icon)}</div>
+          <div class="hourTemp">${Number.isFinite(temp) ? Math.round(temp) : "--"}°</div>
+        `;
+        elHourly.appendChild(card);
+      }
+    }
+
+    function renderDays(payload){
+      const days = Array.isArray(payload.days) ? payload.days : [];
+      elDays.innerHTML = "";
+
+      for (const d of days){
+        const row = document.createElement("div");
+        row.className = "dayRow";
+        const label = d.label || "";
+        const cond = d.condition || d.detail || "";
+        const icon = d.icon || "cloudy";
+        const hi = (d.hi != null) ? String(d.hi) : "--";
+        const lo = (d.lo != null) ? String(d.lo) : "--";
+
+        row.innerHTML = `
+          <div class="dayLabel">${escapeHtml(label)}</div>
+          <div class="wxIconSm">${svgIcon(icon)}</div>
+          <div class="dayCond">${escapeHtml(cond)}</div>
+          <div class="hiLoR">
+            <div class="hi">${escapeHtml(hi)}°</div>
+            <div class="lo">${escapeHtml(lo)}°</div>
+          </div>
+        `;
+        elDays.appendChild(row);
+      }
+    }
+
+    function escapeHtml(s){
+      s = String(s ?? "");
+      return s.replace(/[&<>"']/g, (c) => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    function sevColor(sev){
+      sev = Number(sev || 3);
+      if (sev <= 1) return "var(--good)";
+      if (sev === 2) return "var(--warn)";
+      if (sev === 3) return "rgb(255,128,0)";
+      if (sev >= 4) return "var(--bad)";
+      return "var(--vio)";
+    }
+
+    function pushNws(payload){
+      if (!payload) return;
+      const id = String(payload.id || ("nws_" + Date.now()));
+      const sev = Number(payload.sev || 3);
+      const event = payload.event || "Weather Statement";
+      const headline = payload.headline || "";
+      const source = payload.source || "";
+
+      const card = document.createElement("div");
+      card.className = "nwsCard";
+      card.dataset.id = id;
+
+      card.innerHTML = `
+        <div class="nwsBar" style="background:${sevColor(sev)}"></div>
+        <div class="nwsBody">
+          <div class="nwsEvent">${escapeHtml(event)}</div>
+          <div class="nwsHeadline">${escapeHtml(headline)}</div>
+          <div class="nwsSource">${escapeHtml(source)}</div>
+        </div>
+      `;
+
+      nwsStack.appendChild(card);
+
+      const expiresMs = Number(payload.expiresMs || (Date.now() + 9000));
+      const ttl = Math.max(1200, expiresMs - Date.now());
+      setTimeout(() => {
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+      }, ttl);
+    }
+
+    function clearNws(){
+      nwsStack.innerHTML = "";
+    }
+
+    function closeUi(){
+      hide();
+      post("azwx_weather_close", {});
+    }
+
+    BTN_CLOSE.addEventListener("click", closeUi);
+    BACKDROP.addEventListener("click", closeUi);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeUi();
+    });
+
+    window.addEventListener("message", (e) => {
+      const msg = e.data || {};
+      if (msg.t === "weather"){
+        if (msg.action === "set" || msg.action === "open"){
+          openFromPayload(msg.data || msg.payload || {});
+        } else if (msg.action === "close"){
+          hide();
+        }
+      }
+
+      if (msg.t === "nws"){
+        if (msg.action === "push") pushNws(msg);
+        if (msg.action === "clear") clearNws();
+        if (msg.action === "office"){
+          const office = msg.office ? String(msg.office) : "";
+          if (office) {
+            const cur = elSub.textContent || "";
+            elSub.textContent = cur.includes("NWS") ? cur : `NWS ${office}`;
+          }
+        }
+      }
+    });
+
+    (function boot(){
+      hide();
+
+      post("azwx_nws_ready", { ok: true });
+
+      // Optional: if you ever add a client callback named "weather_ready", this will work too.
+      // (Safe: ignored if not registered.)
+      post("weather_ready", { ok: true });
+
+      setTimeout(() => post("azwx_nws_ready", { ok: true }), 800);
+    })();
+  </script>
+</body>
+</html>
