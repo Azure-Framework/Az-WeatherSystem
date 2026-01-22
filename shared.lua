@@ -1,5 +1,3 @@
-// File: no-comments-pasted.lua
-
 local function clamp(n, lo, hi)
   n = tonumber(n)
   if not n then return lo end
