@@ -1,10 +1,10 @@
 fx_version "cerulean"
 game "gta5"
 
-name "Az-WeatherSystem"
+name "az_weatherfronts"
 author "Azure"
 description "Moving weather fronts + storm chasing + gusts (synced) + naming/severity/forecast/alerts/biomes"
-version "1.2.1"
+version "1.2.2"
 
 shared_scripts {
   "config.lua",
@@ -15,9 +15,16 @@ server_script "server.lua"
 client_script "client.lua"
 
 
+
 ui_page 'html/index.html'
 
 files {
   'html/index.html',
-  'html/map.png'
+  'html/index.js',
+  'html/map-road.jpg',
+  'html/map-atlas.jpg',
+  'html/leaflet.js',
+  'html/leaflet.css'
 }
+
+

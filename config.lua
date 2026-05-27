@@ -1,5 +1,5 @@
 Config = Config or {}
--- vector2 fallback (server-safe)
+
 if not vector2 then
   function vector2(x,y) return {x=x, y=y} end
 end
@@ -7,12 +7,51 @@ end
 
 Config.Debug = false
 
--- Disable other weather sync resources or they will fight this.
+
+Config.Sync = {
+  
+  
+  
+  time = false,
+  weather = false,
+  weatherMode = "regional",
+  clearFrontsInGlobalMode = true,
+}
+
+Config.Time = {
+  enabled = false,
+  freeze = false,
+  
+  useSystemTime = false,
+  
+  realtime = false,
+  
+  
+  hour = nil,
+  minute = 0,
+  
+  
+  timezoneOffsetMinutes = nil,
+}
+
+Config.SystemWeather = {
+  enabled = false,
+  provider = "nws",
+  lat = 34.0522,
+  lon = -118.2437,
+  refreshMinutes = 10,
+  userAgent = "Az-WeatherSystem (MadebyAzure.com)",
+}
+
+
+Config.RealWeather = Config.RealWeather or Config.SystemWeather
+
+
 
 Config.World = {
   minX = -4200.0,
   maxX =  4600.0,
-  minY = -5200.0,
+  minY = -4200.0,
   maxY =  8200.0,
 }
 
@@ -20,51 +59,51 @@ Config.ServerTickMs  = 500
 Config.BroadcastMs   = 1000
 Config.ClientApplyMs = 750
 
--- Hard cap on simultaneously active fronts.
--- (Default lowered so you don't end up with 7-10 storms at once.)
+
+
 Config.MaxFronts = 5
 
--- Optional per-kind caps so you don't get a pile of the same extreme front.
--- Set to nil to disable a cap.
+
+
 Config.KindCaps = {
-  STORM = 2,
+  STORM = 1,
   BLIZZARD = 1,
-  SUPER_WIND = 2,
+  SUPER_WIND = 1,
   SUPER_HEAT = 1,
   SUPER_COLD = 1,
 }
 
 Config.RandomEvents = {
-  enabled = true,
-  -- Less spammy by default.
+  enabled = false,
+  
   checkEveryMs = 90000,
-  spawnChance = 0.35,
+  spawnChance = 0.15,
   preferEdges = true,
-  -- Avoid stacking new fronts on top of existing ones.
-  -- If a new spawn point is within this distance of any existing front center, it's skipped.
-  minSeparationMeters = 2200.0,
+  
+  
+  minSeparationMeters = 4200.0,
 }
 
--- Make wind *feel* like wind. GTA wind visuals can be subtle; this adds mild vehicle drift
--- in strong wind (and extra kick during gusts). Disable if you don't want physics influence.
+
+
 Config.WindPhysics = {
-  enabled = true,
-  minWindSpeed = 5.5,          -- m/s before any drift starts
+  enabled = false,
+  minWindSpeed = 5.5,          
   maxWindSpeed = 12.0,
-  maxForce = 0.42,             -- overall force scale (tune carefully)
+  maxForce = 0.42,             
   gustMultiplier = 1.8,
   onlyWhenDriving = true,
-  ignoreClasses = { 15, 16, 21 }, -- heli, plane, train
+  ignoreClasses = { 15, 16, 21 }, 
 }
 
 Config.Forecast = {
-  -- Seconds into the future to draw projected path points on the map.
+  
   steps = { 30, 60, 120, 180, 300 },
 }
 
 Config.Naming = {
-  enabled = true,
-  -- Names are assigned automatically (unique among active fronts).
+  enabled = false,
+  
   names = {
     "Astra","Borealis","Cinder","Dahlia","Ember","Frost","Gale","Harbor","Ion","Juno",
     "Kestrel","Lumen","Mistral","Nova","Onyx","Peregrine","Quill","Raven","Sirocco","Tundra",
@@ -73,7 +112,7 @@ Config.Naming = {
 }
 
 Config.Severity = {
-  -- Base severity (1-5) by kind; final severity also scales with intensity.
+  
   base = {
     CLEAR=1,
     RAIN=2,
@@ -88,7 +127,7 @@ Config.Severity = {
 }
 
 Config.Gusts = {
-  enabled = true,
+  enabled = false,
   chancePerTick = 0.12,
   minDurationMs = 2200,
   maxDurationMs = 5200,
@@ -207,10 +246,10 @@ Config.Base = {
   temperatureC = 18.0,
 }
 
--- Biome bias modifies LOCAL output to feel more realistic.
--- Shapes are circles for simplicity.
+
+
 Config.Biomes = {
-  enabled = true,
+  enabled = false,
   zones = {
     {
       id = "mountains",
@@ -221,7 +260,7 @@ Config.Biomes = {
       rainMul = 0.90,
       snowMul = 1.25,
       windMul = 1.10,
-      -- For random spawns inside this zone:
+      
       spawnWeights = { BLIZZARD=3, SNOW=3, STORM=2, RAIN=1, SUPER_COLD=2, CLEAR=1 }
     },
     {
@@ -250,66 +289,71 @@ Config.Biomes = {
 }
 
 Config.Alerts = {
-  enabled = true,
-  -- Alert UI (NWS-style). Uses NUI so it works even while the pause menu map is open.
+  enabled = false,
+  
   ui = {
-    enabled = true,
+    enabled = false,
     office = "Los Santos",
   },
 
-  -- Optional legacy draw banner (2D draws) if you want it too.
+  
   drawBanner = false,
-  -- When a front of severity >= minSeverity is within (radius + buffer) => warning.
+  
   minSeverity = 3,
   bufferMeters = 550.0,
   cooldownMs = 15000,
+  bannerDurationMs = 15000,
   showChat = true,
   showBanner = true,
   sound = {
-    enabled = true,
-    -- Best-effort GTA frontend sound; if it fails, you still get banner/chat.
+    enabled = false,
+    
     name = "5_SEC_WARNING",
     set = "HUD_MINI_GAME_SOUNDSET",
   }
 }
 
--- Pause-map overlay (no NUI): fronts are rendered as radius + center + forecast dot blips.
 Config.PauseMap = {
   command = "wxmap",
-  -- When toggled ON, open the pause menu so you immediately see the map.
   openPauseMenu = true,
-
-  -- If false, blips show only on the big pause-map (not the minimap).
   showOnRadar = false,
 
   showRadius = true,
   showCenter = true,
-  showForecastDots = true,
+  showForecast = true,
+  showDirection = true,
 
-  -- Blip visuals
-  radiusAlpha = 70,
-  centerAlpha = 220,
-  forecastAlpha = 120,
-  centerScale = 0.75,
-  forecastScale = 0.35,
+  radiusAlpha = 170,
+  centerAlpha = 255,
+  centerScale = 0.85,
 
-  -- Per-kind blip colors (GTA blip color IDs)
+  forecastAlpha = 190,
+  forecastScale = 0.60,
+
+  dirAlpha = 220,
+  dirScale = 0.55,
+  dirCount = 3,
+  dirSpacingMul = 0.22,
+
+  maxForecast = 4,
+  forecastStepsAreMinutes = true,
+
+  colorsDefault = 1,
   colors = {
-    CLEAR = 25,
-    RAIN = 3,
     STORM = 1,
-    SNOW = 2,
-    BLIZZARD = 0,
-    SUPER_WIND = 5,
-    SUPER_HEAT = 47,
-    SUPER_COLD = 38,
+    RAIN = 3,
+    BLIZZARD = 3,
+    SNOW = 3,
+    SUPER_WIND = 5
   },
 
-  -- Optional: per-kind center sprites (set nil to use default 1)
   sprites = {
-    -- STORM = 310,
-    -- BLIZZARD = 512,
-  },
+    STORM = 75,
+    RAIN = 75,
+    BLIZZARD = 75,
+    SNOW = 75,
+    SUPER_WIND = 75
+  }
 }
 
 Config.Commands = {
@@ -325,4 +369,181 @@ Config.Commands = {
   seed      = "wxseed",
   time      = "wxtime",
   freezeTime= "wxfreezetime",
+}
+
+
+Config.WeatherApp = {
+  locationName = "Los Santos",
+}
+
+Config.RegionalWeather = {
+  enabled = false,
+  allowClientEditing = true,
+  persistFile = "data/zones.json",
+  defaultRadius = 1450.0,
+  minRadius = 350.0,
+  maxRadius = 4200.0,
+  transitionFalloff = 0.18,
+  profiles = {
+    CITY = {
+      label = "City",
+      kind = "RAIN",
+      baseWeather = "CLOUDS",
+      rain = 0.10,
+      snow = 0.0,
+      windAdd = 0.9,
+      tempAdd = 0.6,
+      lightningChance = 0.01,
+      timecycle = nil,
+      windDirDeg = 205.0,
+      description = "Dense urban coverage with cooler overcast periods and fast-moving city showers."
+    },
+    DESERT = {
+      label = "Desert",
+      kind = "SUPER_HEAT",
+      baseWeather = "EXTRASUNNY",
+      rain = 0.01,
+      snow = 0.0,
+      windAdd = 1.7,
+      tempAdd = 5.6,
+      lightningChance = 0.00,
+      timecycle = "heat",
+      windDirDeg = 95.0,
+      description = "Dry heat, brighter skies, and stronger crosswinds across the open desert."
+    },
+    COAST = {
+      label = "Coast",
+      kind = "RAIN",
+      baseWeather = "OVERCAST",
+      rain = 0.12,
+      snow = 0.0,
+      windAdd = 2.3,
+      tempAdd = -1.7,
+      lightningChance = 0.01,
+      timecycle = nil,
+      windDirDeg = 255.0,
+      description = "Marine layer, sea breeze, and moodier shoreline weather near the Pacific."
+    },
+    COUNTRYSIDE = {
+      label = "Countryside",
+      kind = "CLEAR",
+      baseWeather = "CLOUDS",
+      rain = 0.05,
+      snow = 0.0,
+      windAdd = 1.0,
+      tempAdd = -0.2,
+      lightningChance = 0.00,
+      timecycle = nil,
+      windDirDeg = 180.0,
+      description = "Balanced inland weather with gentle winds and slower-moving regional changes."
+    },
+    MOUNTAINS = {
+      label = "Mountains",
+      kind = "SNOW",
+      baseWeather = "OVERCAST",
+      rain = 0.06,
+      snow = 0.12,
+      windAdd = 2.8,
+      tempAdd = -4.8,
+      lightningChance = 0.00,
+      timecycle = "micheal",
+      windDirDeg = 315.0,
+      description = "Higher elevations stay colder, windier, and flip to snow far sooner than the lowlands."
+    },
+    CUSTOM = {
+      label = "Custom",
+      kind = "CLEAR",
+      baseWeather = "CLEAR",
+      rain = 0.0,
+      snow = 0.0,
+      windAdd = 0.0,
+      tempAdd = 0.0,
+      lightningChance = 0.00,
+      timecycle = nil,
+      description = "Custom regional zone."
+    },
+  },
+  defaultZones = {
+    {
+      label = "Los Santos Core",
+      profile = "CITY",
+      x = 220.0,
+      y = -860.0,
+      r = 1450.0,
+      intensity = 0.92,
+      priority = 4,
+    },
+    {
+      label = "South LS & Port",
+      profile = "COAST",
+      x = 620.0,
+      y = -1910.0,
+      r = 1125.0,
+      intensity = 0.86,
+      priority = 3,
+    },
+    {
+      label = "Del Perro Coast",
+      profile = "COAST",
+      x = -1510.0,
+      y = -780.0,
+      r = 1525.0,
+      intensity = 0.90,
+      priority = 3,
+    },
+    {
+      label = "Great Chaparral",
+      profile = "COUNTRYSIDE",
+      x = -820.0,
+      y = 1180.0,
+      r = 1450.0,
+      intensity = 0.76,
+      priority = 2,
+    },
+    {
+      label = "Alamo Foothills",
+      profile = "COUNTRYSIDE",
+      x = 980.0,
+      y = 2050.0,
+      r = 1125.0,
+      intensity = 0.74,
+      priority = 2,
+    },
+    {
+      label = "Grand Senora Basin",
+      profile = "DESERT",
+      x = 1640.0,
+      y = 3190.0,
+      r = 1525.0,
+      intensity = 0.93,
+      priority = 4,
+    },
+    {
+      label = "Grapeseed Flats",
+      profile = "COUNTRYSIDE",
+      x = 1765.0,
+      y = 4680.0,
+      r = 1160.0,
+      intensity = 0.72,
+      priority = 2,
+    },
+    {
+      label = "Mount Chiliad",
+      profile = "MOUNTAINS",
+      x = -560.0,
+      y = 5180.0,
+      r = 1480.0,
+      intensity = 0.95,
+      priority = 4,
+    },
+    {
+      label = "Paleto Coast",
+      profile = "COAST",
+      x = -90.0,
+      y = 6260.0,
+      r = 1180.0,
+      intensity = 0.82,
+      priority = 3,
+    },
+  }
 }

@@ -1,5 +1,6 @@
-local RESOURCE = GetCurrentResourceName()
 
+local RESOURCE = GetCurrentResourceName()
+local nuiAlertUntilMs = 0
 Config = Config or {}
 local DEBUG = (Config.Debug ~= false)
 
@@ -7,6 +8,9 @@ local function dprint(...)
   if not DEBUG then return end
   print("^3[az_weatherfronts]^7", ...)
 end
+
+
+
 
 AZW = AZW or {}
 
@@ -96,7 +100,10 @@ local fronts = {}
 local paused = false
 local seed = 0
 local serverTime = { freeze=false, hour=nil, minute=0 }
+local serverSync = { time=true, weather=true, weatherMode="regional" }
+local serverWeather = nil
 local forecastSteps = (Config.Forecast and Config.Forecast.steps) or {30,60,120,180,300}
+local zones = {}
 
 local overlayEnabled = false
 local blips = {}
@@ -117,6 +124,9 @@ local lastAlertAt = 0
 local lastAlertFront = nil
 local lastFrontHash = 0
 local entered = {}
+
+
+
 
 local nuiReady = false
 local nuiQueue = {}
@@ -169,6 +179,8 @@ local function nwsPush(id, sev, event, headline, body, durMs, source)
   local issued = GetGameTimer()
   local expires = issued + durMs
 
+  nuiAlertUntilMs = math.max(nuiAlertUntilMs or 0, expires)
+
   nwsSend({
     t="nws",
     action="push",
@@ -209,6 +221,9 @@ RegisterNetEvent("az_weatherfronts:nwsOffice", function(office)
   end
 end)
 
+
+
+
 local weatherUiOpen = false
 local weatherToggleAt = 0
 local WEATHER_TOGGLE_LOCK = 350
@@ -228,6 +243,37 @@ RegisterNUICallback("azwx_weather_close", function(_, cb)
   SetNuiFocusKeepInput(false)
   if cb then cb({ ok = true }) end
   dprint("^3NUI closed (azwx_weather_close)^7")
+end)
+
+
+RegisterNUICallback("azwx_zone_save", function(data, cb)
+  if Config.RegionalWeather and Config.RegionalWeather.allowClientEditing == false then
+    if cb then cb({ ok = false, error = "editing_disabled" }) end
+    return
+  end
+
+  local zone = {
+    id = tonumber(data.id),
+    label = tostring(data.label or "Regional Zone"),
+    profile = tostring(data.profile or "CUSTOM"),
+    x = tonumber(data.x),
+    y = tonumber(data.y),
+    r = tonumber(data.r),
+    intensity = tonumber(data.intensity),
+    priority = tonumber(data.priority),
+  }
+
+  TriggerServerEvent("az_weatherfronts:zone:save", zone)
+  if cb then cb({ ok = true }) end
+end)
+
+RegisterNUICallback("azwx_zone_delete", function(data, cb)
+  if Config.RegionalWeather and Config.RegionalWeather.allowClientEditing == false then
+    if cb then cb({ ok = false, error = "editing_disabled" }) end
+    return
+  end
+  TriggerServerEvent("az_weatherfronts:zone:delete", tonumber(data.id or 0) or 0)
+  if cb then cb({ ok = true }) end
 end)
 
 local function weatherSend(action, payload)
@@ -273,6 +319,9 @@ local function closeWeatherUi()
   dprint("^3Weather UI close^7")
 end
 
+
+
+
 local function biomeAt(x, y)
   if not (Config.Biomes and Config.Biomes.enabled) then return nil end
   local zones = Config.Biomes.zones or {}
@@ -300,8 +349,14 @@ local function setWeatherTypeSmooth(w)
 end
 
 local function applyTime()
+  if serverSync and serverSync.time == false then
+    pcall(function() NetworkClearClockTimeOverride() end)
+    return
+  end
   if serverTime.hour ~= nil then
     NetworkOverrideClockTime(serverTime.hour, serverTime.minute or 0, 0)
+  else
+    pcall(function() NetworkClearClockTimeOverride() end)
   end
 end
 
@@ -328,12 +383,121 @@ end
 
 local function degToRad(d) return math.rad(d or 0.0) end
 
-local function computeLocal(px, py, frontsOverride)
+local computeLocal
+
+local function weatherSyncEnabled()
+  return not (serverSync and serverSync.weather == false)
+end
+
+local function regionalWeatherEnabled()
+  return weatherSyncEnabled() and not (Config.RegionalWeather and Config.RegionalWeather.enabled == false)
+end
+
+local function weatherModeIsGlobal()
+  return tostring(serverSync and serverSync.weatherMode or "regional"):lower() == "global"
+end
+
+local function baseWeatherState()
+  local base = Config.Base or {}
+  return {
+    weather = tostring(base.weather or "CLEAR"):upper(),
+    rain = clamp01(base.rain or 0.0),
+    snow = clamp01(base.snow or 0.0),
+    windSpeed = clamp(tonumber(base.windSpeed or 0.0) or 0.0, 0.0, 12.0),
+    windDirDeg = tonumber(base.windDirDeg) or 180.0,
+    tempC = tonumber(base.temperatureC or 18.0) or 18.0,
+    lightningChance = 0.0,
+    timecycle = nil,
+    biome = nil,
+    region = nil,
+    dominantKind = tostring(base.weather or "CLEAR"):upper(),
+    frontScore = 0.0,
+    zoneScore = 0.0,
+    zoneWeatherScore = 0.0,
+    inGust = false,
+    source = "base_config",
+  }
+end
+
+local function shouldUseServerGlobalWeather()
+  return weatherSyncEnabled() and weatherModeIsGlobal() and serverWeather ~= nil
+end
+
+local function normalizeServerWeather(wx)
+  if not wx then return nil end
+  return {
+    weather = tostring(wx.weather or "CLEAR"):upper(),
+    rain = clamp01(wx.rain or 0.0),
+    snow = clamp01(wx.snow or 0.0),
+    windSpeed = clamp(tonumber(wx.windSpeed or 0.0) or 0.0, 0.0, 12.0),
+    windDirDeg = tonumber(wx.windDirDeg) or 180.0,
+    tempC = tonumber(wx.tempC or wx.temperatureC or 18.0) or 18.0,
+    lightningChance = clamp01(wx.lightningChance or 0.0),
+    timecycle = wx.timecycle,
+    biome = nil,
+    region = nil,
+    dominantKind = tostring(wx.kind or wx.weather or "CLEAR"):upper(),
+    frontScore = 0.0,
+    zoneScore = 0.0,
+    zoneWeatherScore = 0.0,
+    inGust = false,
+    source = wx.source,
+  }
+end
+
+local function getWeatherAt(px, py, frontsOverride, zonesOverride)
+  if not weatherSyncEnabled() then
+    return baseWeatherState()
+  end
+  if shouldUseServerGlobalWeather() then
+    return normalizeServerWeather(serverWeather)
+  end
+  return computeLocal(px, py, frontsOverride, zonesOverride) or baseWeatherState()
+end
+
+local function zoneProfileFor(zone)
+  local rw = Config.RegionalWeather or {}
+  local profiles = rw.profiles or {}
+  local key = tostring(zone and zone.profile or "CUSTOM"):upper()
+  return profiles[key] or profiles.CUSTOM or {}
+end
+
+local function zoneBlendWeight(px, py, zone)
+  local dx = px - (tonumber(zone.x) or 0.0)
+  local dy = py - (tonumber(zone.y) or 0.0)
+  local r = tonumber(zone.r) or 0.0
+  if r <= 0.0 then return 0.0 end
+  local d = math.sqrt(dx*dx + dy*dy)
+  if d >= r then return 0.0 end
+
+  local t = 1.0 - (d / r)
+  
+  return (t * t * (3.0 - 2.0 * t)) * clamp01(zone.intensity or 1.0)
+end
+
+local function bestZoneAt(px, py, zonesOverride)
+  local zoneList = zonesOverride or zones
+  local best, bestScore = nil, 0.0
+  for i=1, #zoneList do
+    local z = zoneList[i]
+    local score = zoneBlendWeight(px, py, z) + ((tonumber(z.priority) or 0.0) * 0.001)
+    if score > bestScore then
+      best = z
+      bestScore = score
+    end
+  end
+  return best, bestScore
+end
+
+computeLocal = function(px, py, frontsOverride, zonesOverride)
   local base = Config.Base
   local list = frontsOverride or fronts
+  local zoneList = zonesOverride or zones
 
   local bestKind = base.weather
   local bestScore = 0.0
+  local bestFrontScore = 0.0
+  local bestZoneScore = 0.0
 
   local rainT = base.rain
   local snowT = base.snow
@@ -342,6 +506,8 @@ local function computeLocal(px, py, frontsOverride)
   local lightningChance = 0.0
   local chosenTimecycle = nil
   local bestFront = nil
+  local bestWeather = base.weather
+  local bestZone = nil
 
   for i=1, #list do
     local f = list[i]
@@ -364,11 +530,46 @@ local function computeLocal(px, py, frontsOverride)
 
         if score > bestScore then
           bestScore = score
+          bestFrontScore = score
           bestKind = f.kind
+          bestWeather = (k.baseWeather or base.weather)
           chosenTimecycle = k.timecycle
           bestFront = f
         end
       end
+    end
+  end
+
+  local zoneWeatherScore = 0.0
+  for i=1, #zoneList do
+    local z = zoneList[i]
+    local score = zoneBlendWeight(px, py, z)
+    if score > 0.0 then
+      local p = zoneProfileFor(z)
+      rainT = rainT + (tonumber(p.rain) or 0.0) * score
+      snowT = snowT + (tonumber(p.snow) or 0.0) * score
+      windAddT = windAddT + (tonumber(p.windAdd) or 0.0) * score
+      tempT = tempT + (tonumber(p.tempAdd) or 0.0) * score
+      lightningChance = math.max(lightningChance, (tonumber(p.lightningChance) or 0.0) * score)
+      zoneWeatherScore = zoneWeatherScore + score
+
+      local zonePriorityBoost = (tonumber(z.priority) or 0.0) * 0.001
+      local zoneScore = score + zonePriorityBoost
+      if zoneScore > bestZoneScore then
+        bestZoneScore = zoneScore
+        bestZone = z
+      end
+    end
+  end
+
+  if bestZone and bestZoneScore > 0.025 then
+    local zp = zoneProfileFor(bestZone)
+    local zoneBeatsFront = (bestZoneScore >= (bestFrontScore * 1.12)) or (bestFront == nil)
+    if zoneBeatsFront then
+      bestKind = tostring(zp.kind or bestKind or base.weather):upper()
+      bestWeather = tostring(zp.baseWeather or bestWeather or base.weather):upper()
+      if zp.timecycle then chosenTimecycle = zp.timecycle end
+      bestScore = math.max(bestScore, bestZoneScore)
     end
   end
 
@@ -384,13 +585,18 @@ local function computeLocal(px, py, frontsOverride)
   rainT = clamp01(rainT * rainMul)
   snowT = clamp01(snowT * snowMul)
 
-  local weather = (KINDS[bestKind] and KINDS[bestKind].baseWeather) or base.weather
+  local weather = tostring(bestWeather or ((KINDS[bestKind] and KINDS[bestKind].baseWeather) or base.weather))
   local windSpeed = AZW.clamp((base.windSpeed + windAddT) * windMul, 0.0, 12.0)
 
   local windDir = base.windDirDeg
-  if bestFront and bestScore > 0.10 then
+  if bestFront and bestFrontScore > 0.10 then
     local dir = math.deg(math.atan2(bestFront.vy or 0.0, bestFront.vx or 0.0))
     if dir == dir then windDir = dir end
+  elseif bestZone and bestZoneScore > 0.05 then
+    local p = zoneProfileFor(bestZone)
+    if tonumber(p.windDirDeg) then
+      windDir = tonumber(p.windDirDeg)
+    end
   end
 
   local gExtra = 0.0
@@ -430,6 +636,11 @@ local function computeLocal(px, py, frontsOverride)
     lightningChance = lightningChance,
     timecycle = chosenTimecycle,
     biome = bio,
+    region = bestZone,
+    dominantKind = bestKind,
+    frontScore = bestFrontScore,
+    zoneScore = bestZoneScore,
+    zoneWeatherScore = zoneWeatherScore,
     inGust = inGust,
   }
 end
@@ -462,6 +673,9 @@ local function applyLocal(target)
   end
 end
 
+
+
+
 local function isNightHour(h)
   h = tonumber(h)
   if h == nil then
@@ -476,13 +690,16 @@ local function iconForWx(wx, hour)
   local wind = tonumber(wx.windSpeed or 0.0) or 0.0
   local lightning = tonumber(wx.lightningChance or 0.0) or 0.0
   local w = tostring(wx.weather or "CLEAR"):upper()
+  local dominantKind = tostring(wx.dominantKind or ""):upper()
 
-  if snow >= 0.18 then return "snow", "Snow" end
-  if rain >= 0.22 and lightning >= 0.05 then return "thunder", "Thunderstorms" end
-  if rain >= 0.22 then return "rain", "Rain" end
-  if wind >= 9.0 then return "wind", "Windy" end
+  if dominantKind == "BLIZZARD" or (snow >= 0.20 and wind >= 7.0) then return "snow", "Blizzard" end
+  if dominantKind == "STORM" and (rain >= 0.10 or lightning >= 0.015) then return "thunder", "Thunderstorms" end
+  if snow >= 0.16 then return "snow", "Snow" end
+  if rain >= 0.16 and lightning >= 0.02 then return "thunder", "Thunderstorms" end
+  if rain >= 0.14 then return "rain", "Rain" end
+  if dominantKind == "SUPER_WIND" or wind >= 8.5 then return "wind", "Windy" end
 
-  if w == "FOGGY" or w == "SMOG" or (w == "CLOUDS" and rain < 0.10) then
+  if w == "FOGGY" or w == "SMOG" or (w == "CLOUDS" and rain < 0.08) then
     return "fog", "Fog"
   end
 
@@ -490,7 +707,7 @@ local function iconForWx(wx, hour)
     return "cloudy", "Cloudy"
   end
 
-  if rain > 0.08 then
+  if rain > 0.06 then
     return "partly-day", "Scattered showers"
   end
 
@@ -536,6 +753,75 @@ local function projectFrontsAt(tSec)
   return proj
 end
 
+
+local function stepLabel(sec)
+  sec = tonumber(sec) or 0
+  if sec >= 60 then
+    return ("+%dm"):format(math.floor(sec / 60.0 + 0.5))
+  end
+  return ("+%ds"):format(sec)
+end
+
+local function buildRegionalForecastPayload()
+  local out = {}
+  local baseHour = serverTime.hour
+  if baseHour == nil then baseHour = GetClockHours() end
+
+  for i=1, #zones do
+    local z = zones[i]
+    local current = getWeatherAt(z.x, z.y, fronts, zones)
+    local curIcon, curCond = iconForWx(current, baseHour)
+    local profile = zoneProfileFor(z)
+    local upcoming = {}
+
+    for si=1, math.min(4, #forecastSteps) do
+      local step = forecastSteps[si]
+      local proj = projectFrontsAt(step)
+      local wx = getWeatherAt(z.x, z.y, proj, zones)
+      local icon, cond = iconForWx(wx, (baseHour + si) % 24)
+      upcoming[#upcoming+1] = {
+        label = stepLabel(step),
+        icon = icon,
+        condition = cond,
+        tempC = math.floor((tonumber(wx.tempC or 0.0) or 0.0) + 0.5),
+        rain = clamp01(wx.rain or 0.0),
+        snow = clamp01(wx.snow or 0.0),
+      }
+    end
+
+    out[#out+1] = {
+      id = z.id,
+      label = z.label,
+      profile = z.profile,
+      profileLabel = tostring(profile.label or z.profile or "Zone"),
+      description = tostring(profile.description or ""),
+      x = z.x,
+      y = z.y,
+      r = z.r,
+      intensity = z.intensity,
+      priority = z.priority,
+      current = {
+        icon = curIcon,
+        condition = curCond,
+        tempC = math.floor((tonumber(current.tempC or 0.0) or 0.0) + 0.5),
+        rain = clamp01(current.rain or 0.0),
+        snow = clamp01(current.snow or 0.0),
+        windMph = math.floor(windToMph(current.windSpeed) + 0.5),
+      },
+      upcoming = upcoming,
+    }
+  end
+
+  table.sort(out, function(a, b)
+    local ap = tonumber(a.priority or 0) or 0
+    local bp = tonumber(b.priority or 0) or 0
+    if ap == bp then return tostring(a.label or "") < tostring(b.label or "") end
+    return ap > bp
+  end)
+
+  return out
+end
+
 local function buildWeeklyForecastPayload(px, py)
   local days = {}
   local hourSec = 3600.0
@@ -548,7 +834,7 @@ local function buildWeeklyForecastPayload(px, py)
   for i=0, 6 do
     local tSec = i * hourSec
     local proj = projectFrontsAt(tSec)
-    local wx = computeLocal(px, py, proj)
+    local wx = getWeatherAt(px, py, proj, zones)
 
     local icon, cond = iconForWx(wx, (baseHour + (i * 3)) % 24)
     local tempC = tonumber(wx.tempC or 0.0) or 0.0
@@ -578,33 +864,65 @@ local function buildWeeklyForecastPayload(px, py)
     }
   end
 
-  local nowWx = computeLocal(px, py, fronts)
-  local icon, cond = iconForWx(nowWx, baseHour)
-  local tempC = tonumber(nowWx.tempC or 0.0) or 0.0
+  local nowWx = getWeatherAt(px, py, fronts, zones)
+  local uiNow = {
+    weather = cur.weather or nowWx.weather,
+    rain = cur.rain or nowWx.rain,
+    snow = cur.snow or nowWx.snow,
+    windSpeed = cur.windSpeed or nowWx.windSpeed,
+    windDirDeg = cur.windDirDeg or nowWx.windDirDeg,
+    tempC = cur.tempC or nowWx.tempC,
+    lightningChance = nowWx.lightningChance,
+    dominantKind = nowWx.dominantKind,
+  }
+  local icon, cond = iconForWx(uiNow, baseHour)
+  local tempC = tonumber(uiNow.tempC or 0.0) or 0.0
+  local activeRegion = regionalWeatherEnabled() and (nowWx.region or bestZoneAt(px, py, zones)) or nil
   local now = {
     icon = icon,
     condition = cond,
-    summary = "Forecast at your current position",
+    summary = activeRegion and ("Forecast at your position • " .. tostring(activeRegion.label or "Regional zone")) or "Forecast at your current position",
     tempC = tempC,
-    rain = clamp01(nowWx.rain or 0.0),
-    snow = clamp01(nowWx.snow or 0.0),
-    windMph = windToMph(nowWx.windSpeed),
-    windDirDeg = math.floor((tonumber(nowWx.windDirDeg or 0.0) or 0.0) + 0.5),
+    rain = clamp01(uiNow.rain or 0.0),
+    snow = clamp01(uiNow.snow or 0.0),
+    windMph = windToMph(uiNow.windSpeed),
+    windDirDeg = math.floor((tonumber(uiNow.windDirDeg or 0.0) or 0.0) + 0.5),
   }
 
-  local location = (Config.WeatherApp and Config.WeatherApp.locationName) or "Los Santos"
-  local model = "Dynamic fronts"
+  local location = (activeRegion and activeRegion.label) or ((Config.WeatherApp and Config.WeatherApp.locationName) or "Los Santos")
+  local model = (not weatherSyncEnabled() and "Weather sync disabled")
+    or (shouldUseServerGlobalWeather() and ("Server-authoritative global weather" .. (serverWeather and serverWeather.sourceForecast and (" • " .. tostring(serverWeather.sourceForecast)) or "")))
+    or (regionalWeatherEnabled() and "Dynamic fronts + regional zones")
+    or "Dynamic fronts"
+  local profiles = {}
+  for id, profile in pairs((Config.RegionalWeather and Config.RegionalWeather.profiles) or {}) do
+    profiles[#profiles+1] = {
+      id = id,
+      label = tostring(profile.label or id),
+      description = tostring(profile.description or ""),
+    }
+  end
+  table.sort(profiles, function(a, b) return a.label < b.label end)
 
   return {
     location = location,
-    subtitle = "Weekly forecast • 1 hour = 24 hours",
+    subtitle = (not weatherSyncEnabled() and "Static base weather") or (regionalWeatherEnabled() and "Regional forecast • live zone blending") or "Dynamic forecast",
     clock = fmtClock(),
     model = model,
     now = now,
     days = days,
-    weekly = { hi=tostring(hiAll), lo=tostring(loAll) }
+    weekly = { hi=tostring(hiAll), lo=tostring(loAll) },
+    regional = buildRegionalForecastPayload(),
+    world = W,
+    zones = zones,
+    profiles = profiles,
+    player = { x = px, y = py },
+    currentRegion = activeRegion and activeRegion.label or nil,
   }
 end
+
+
+
 
 local function findNearestAlertable(px, py)
   local minSev = (Config.Alerts and Config.Alerts.minSeverity) or 3
@@ -759,8 +1077,16 @@ end
 
 local function clearAlert()
   banner.active = false
+
+  if GetGameTimer() < (nuiAlertUntilMs or 0) then
+    return
+  end
+
   nwsClear()
 end
+
+
+
 
 local function openPauseMenu()
   if not (Config.PauseMap and Config.PauseMap.openPauseMenu) then return end
@@ -1007,9 +1333,36 @@ end
 local function updateFrontBlips(f)
   local b = blips[f.id]
   if not b then return end
-  if b.center and DoesBlipExist(b.center) then SetBlipCoords(b.center, f.x, f.y, 0.0) end
-  if b.radius and DoesBlipExist(b.radius) then SetBlipCoords(b.radius, f.x, f.y, 0.0) end
+
+  local pm = Config.PauseMap or {}
+  local display = blipDisplayValue()
+  local color = tonumber((pm.colors and pm.colors[f.kind]) or pm.colorsDefault or 1) or 1
+  local radiusAlpha = pmNum(pm, "radiusAlpha", 170)
+  local rMeters = tonumber(f.r) or 2000.0
+
+  if b.center and DoesBlipExist(b.center) then
+    SetBlipCoords(b.center, f.x, f.y, 0.0)
+  end
+
+  if (pm.showRadius ~= false) then
+    if b.radius and DoesBlipExist(b.radius) then
+      RemoveBlip(b.radius)
+      b.radius = nil
+    end
+
+    b.radius = AddBlipForRadius(f.x, f.y, 0.0, rMeters)
+    SetBlipDisplay(b.radius, display)
+    SetBlipColour(b.radius, color)
+    SetBlipAlpha(b.radius, radiusAlpha)
+    SetBlipHighDetail(b.radius, true)
+  else
+    if b.radius and DoesBlipExist(b.radius) then
+      RemoveBlip(b.radius)
+      b.radius = nil
+    end
+  end
 end
+
 
 local function rebuildOverlayBlips()
   if not overlayEnabled then
@@ -1034,6 +1387,9 @@ local function rebuildOverlayBlips()
     if not alive[id] then cleanupFrontBlips(id) end
   end
 end
+
+
+
 
 local CMD_WXMAP   = safeCmd((Config.PauseMap and Config.PauseMap.command) or Config.Commands.wxmap, "wxmap")
 local CMD_TRACK   = safeCmd(Config.Commands.track,  "wxtrack")
@@ -1076,10 +1432,11 @@ end, false)
 RegisterCommand(CMD_STATUS, function()
   local ped = PlayerPedId()
   local p = GetEntityCoords(ped)
-  local localWx = computeLocal(p.x, p.y)
+  local localWx = getWeatherAt(p.x, p.y)
   local bio = localWx.biome and (" biome="..tostring(localWx.biome.label)) or ""
-  local msg = ("fronts=%d local=%s rain=%.2f snow=%.2f wind=%.1f dir=%.0f temp=%.1fC%s")
-    :format(#fronts, localWx.weather, localWx.rain, localWx.snow, localWx.windSpeed, localWx.windDirDeg, localWx.tempC, bio)
+  local src = localWx.source and (" source=" .. tostring(localWx.source)) or ""
+  local msg = ("fronts=%d local=%s rain=%.2f snow=%.2f wind=%.1f dir=%.0f temp=%.1fC%s%s")
+    :format(#fronts, localWx.weather, localWx.rain, localWx.snow, localWx.windSpeed, localWx.windDirDeg, localWx.tempC, bio, src)
   TriggerEvent("chat:addMessage", { args = { "^2wx^7", msg } })
 end, false)
 
@@ -1126,14 +1483,21 @@ RegisterCommand(CMD_WEATHER, function()
   openWeatherUi(payload)
 end, false)
 
+
+
+
 RegisterNetEvent("az_weatherfronts:state", function(s)
-  paused = s.paused or false
-  seed = s.seed or seed
-  fronts = s.fronts or {}
-  serverTime = s.time or serverTime
+  paused = (s.paused == true)
+  if s.seed ~= nil then seed = s.seed end
+  fronts = type(s.fronts) == "table" and s.fronts or {}
+  zones = type(s.zones) == "table" and s.zones or {}
+  serverTime = (s.time ~= nil and s.time) or { freeze=false, hour=nil, minute=0 }
+  serverSync = (s.sync ~= nil and s.sync) or { time=true, weather=true, weatherMode="regional" }
+  serverWeather = s.weather
   forecastSteps = s.forecastSteps or forecastSteps
 
-  if s.gusts then
+  gustActive = {}
+  if type(s.gusts) == "table" then
     for _,g in ipairs(s.gusts) do
       gustActive[g.id] = g
     end
@@ -1214,6 +1578,9 @@ RegisterNetEvent("az_weatherfronts:spawnAtMe", function(args)
   )
 end)
 
+
+
+
 local function sevRgb(sev)
   sev = tonumber(sev) or 3
   if sev <= 1 then return 48, 209, 88 end
@@ -1257,6 +1624,9 @@ CreateThread(function()
   end
 end)
 
+
+
+
 CreateThread(function()
   Wait(750)
   TriggerServerEvent("az_weatherfronts:request")
@@ -1277,7 +1647,7 @@ CreateThread(function()
       goto continue
     end
 
-    local target = computeLocal(p.x, p.y)
+    local target = getWeatherAt(p.x, p.y, fronts, zones)
     applyLocal(target)
 
     if overlayEnabled then rebuildOverlayBlips() end
